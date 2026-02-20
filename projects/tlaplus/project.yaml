@@ -1,0 +1,9 @@
+homepage: "https://foundation.tlapl.us/"
+language: jvm
+primary_contact: "<primary_contact_email>"
+main_repo: "https://github.com/kewbish/tlaplus.git"
+file_github_issue: true
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address

@@ -20,6 +20,8 @@ FUZZER_SRC_DIR="$SRC/tlaplus/tlatools/org.lamport.tlatools/src/fuzz_targets"
 
 cd "$TLATOOLS_DIR"
 ant -f customBuild.xml compile compile-test dist
+rm -rf "TLA+ Tools/"
+
 # find "$TLATOOLS_DIR/class" -type f -name '*.tla' -exec cp {} "$OUT/" \;
 cp "$TLATOOLS_DIR/dist/tla2tools.jar" "$OUT/tla2tools.jar"
 

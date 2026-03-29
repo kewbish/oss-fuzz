@@ -25,7 +25,6 @@ import errno
 import logging
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -326,6 +325,9 @@ def get_parser():  # pylint: disable=too-many-statements,too-many-locals
   _add_external_project_args(run_fuzzer_parser)
   run_fuzzer_parser.add_argument(
       '--corpus-dir', help='directory to store corpus for the fuzz target')
+  run_fuzzer_parser.add_argument(
+      '--log-name',
+      help='log file name to write to /out inside the container')
   run_fuzzer_parser.add_argument('project',
                                  help='name of the project or path (external)')
   run_fuzzer_parser.add_argument('fuzzer_name', help='name of the fuzzer')
@@ -652,7 +654,11 @@ def prepare_aarch64_emulation():
   subprocess.check_call(['docker', 'buildx', 'use', ARM_BUILDER_NAME])
 
 
-def docker_run(run_args, *, print_output=True, architecture='x86_64'):
+def docker_run(run_args,
+               *,
+               print_output=True,
+               architecture='x86_64',
+               output_path=None):
   """Calls `docker run`."""
   platform = 'linux/arm64' if architecture == 'aarch64' else 'linux/amd64'
   command = [
@@ -674,11 +680,16 @@ def docker_run(run_args, *, print_output=True, architecture='x86_64'):
   stdout = None
   if not print_output:
     stdout = open(os.devnull, 'w')
+  elif output_path:
+    stdout = open(output_path, 'w')
 
   try:
     subprocess.check_call(command, stdout=stdout, stderr=subprocess.STDOUT)
   except subprocess.CalledProcessError:
     return False
+  finally:
+    if stdout is not None:
+      stdout.close()
 
   return True
 
@@ -1351,16 +1362,39 @@ def run_fuzzer(args):
                                                    fuzzer=args.fuzzer_name)
     ])
 
+  try:
+    container_command = _get_run_fuzzer_container_command(args)
+  except ValueError as error:
+    logger.error(error)
+    return False
+
   run_args.extend([
       '-v',
       '%s:/out' % args.project.out,
-      '-t',
-      _get_base_runner_image(args),
-      'run_fuzzer',
-      args.fuzzer_name,
-  ] + args.fuzzer_args)
+  ])
 
-  return docker_run(run_args, architecture=args.architecture)
+  if not args.log_name and sys.stdout.isatty():
+    run_args.append('-t')
+
+  run_args.extend([
+      _get_base_runner_image(args),
+  ] + container_command)
+
+  output_path = None
+  if args.log_name:
+    output_path = os.path.join(args.project.out, args.log_name)
+
+  return docker_run(run_args,
+                    architecture=args.architecture,
+                    output_path=output_path)
+
+
+def _get_run_fuzzer_container_command(args):
+  """Returns the command to run inside the base-runner container."""
+  if args.log_name and os.path.basename(args.log_name) != args.log_name:
+    raise ValueError('--log-name must be a file name, not a path.')
+
+  return ['run_fuzzer', args.fuzzer_name] + args.fuzzer_args
 
 
 def fuzzbench_run_fuzzer(args):
